@@ -30,7 +30,7 @@ def mostrar_animacao(event):
             sys.stdout.write('\rEstabelecendo conexão segura' + '.' * i + '   ')
             sys.stdout.flush()
             time.sleep(0.5)
-    sys.stdout.write('\r' + ' ' * 50 + '\r')  # Limpa a linha
+    sys.stdout.write('\r' + ' ' * 50 + '\r')
 
 def perform_key_exchange(sock, event):
     try:
@@ -61,7 +61,7 @@ def perform_key_exchange(sock, event):
         print(f"\n[ERRO] Falha no handshake: {e}")
         raise
     finally:
-        event.set()  # Sinaliza para parar a animação
+        event.set() 
 
 def receber_mensagens(sock, cipher):
     while True:
@@ -75,10 +75,10 @@ def receber_mensagens(sock, cipher):
             mensagem = cipher.decrypt(encrypted_msg).decode()
             
             # Limpa a linha atual e mostra a mensagem formatada
-            sys.stdout.write('\r' + ' ' * 100 + '\r')  # Limpa a linha
+            sys.stdout.write('\r' + ' ' * 100 + '\r')
             print(f"[CRIPTOGRAFADO de SERVIDOR] {encrypted_msg}")
             print(f"[SERVIDOR]: {mensagem}")
-            sys.stdout.write('> ')  # Mostra novo prompt
+            sys.stdout.write('> ')
             sys.stdout.flush()
             
         except Exception as e:
@@ -123,11 +123,14 @@ def main():
             encrypted_msg = cipher.encrypt(msg.encode())
             cliente.send(encrypted_msg)
 
+    except KeyboardInterrupt:
+        print("\n[INFO] Aplicação encerrada com Ctrl+C.")
     except Exception as e:
-        event.set()  # Garante que a animação pare em caso de erro
+        event.set()
         print(f"\r[FALHA] Não foi possível estabelecer conexão segura. Erro: {e}")
     finally:
         cliente.close()
+        print("\n[INFO] Conexão fechada.")
 
 if __name__ == "__main__":
     main()
