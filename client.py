@@ -2,6 +2,8 @@ import socket
 import threading
 import json
 import base64
+import time
+import sys
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import dh
@@ -19,43 +21,68 @@ def carregar_configuracao():
         print("[AVISO] Erro ao ler clientconfig.json. Usando valores padrão.")
         return '127.0.0.1', 9595
 
-def perform_key_exchange(sock):
-    parameters_bytes = sock.recv(2048)
-    parameters = serialization.load_der_parameters(parameters_bytes)
+def mostrar_animacao(event):
+    """Mostra animação de carregamento enquanto o handshake está em progresso"""
+    while not event.is_set():
+        for i in range(4):
+            if event.is_set():
+                break
+            sys.stdout.write('\rEstabelecendo conexão segura' + '.' * i + '   ')
+            sys.stdout.flush()
+            time.sleep(0.5)
+    sys.stdout.write('\r' + ' ' * 50 + '\r')  # Limpa a linha
 
-    server_public_key_bytes = sock.recv(2048)
-    server_public_key = serialization.load_der_public_key(server_public_key_bytes)
+def perform_key_exchange(sock, event):
+    try:
+        parameters_bytes = sock.recv(2048)
+        parameters = serialization.load_der_parameters(parameters_bytes)
 
-    client_private_key = parameters.generate_private_key()
+        server_public_key_bytes = sock.recv(2048)
+        server_public_key = serialization.load_der_public_key(server_public_key_bytes)
 
-    sock.send(client_private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.DER,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    ))
+        client_private_key = parameters.generate_private_key()
 
-    shared_key = client_private_key.exchange(server_public_key)
+        sock.send(client_private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ))
 
-    derived_key = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b'handshake data',
-    ).derive(shared_key)
+        shared_key = client_private_key.exchange(server_public_key)
 
-    return derived_key
+        derived_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b'handshake data',
+        ).derive(shared_key)
+
+        return derived_key
+    except Exception as e:
+        print(f"\n[ERRO] Falha no handshake: {e}")
+        raise
+    finally:
+        event.set()  # Sinaliza para parar a animação
 
 def receber_mensagens(sock, cipher):
     while True:
         try:
             encrypted_msg = sock.recv(2048)
             if not encrypted_msg:
-                print("[INFO] Conexão encerrada pelo servidor.")
+                print("\n[INFO] Conexão encerrada pelo servidor.")
                 break
+                
+            # Decodifica a mensagem
             mensagem = cipher.decrypt(encrypted_msg).decode()
+            
+            # Limpa a linha atual e mostra a mensagem formatada
+            sys.stdout.write('\r' + ' ' * 100 + '\r')  # Limpa a linha
             print(f"[CRIPTOGRAFADO de SERVIDOR] {encrypted_msg}")
             print(f"[SERVIDOR]: {mensagem}")
+            sys.stdout.write('> ')  # Mostra novo prompt
+            sys.stdout.flush()
+            
         except Exception as e:
-            print(f"[ERRO] Falha ao receber mensagem: {e}")
+            print(f"\n[ERRO] Falha ao receber mensagem: {e}")
             break
 
 def main():
@@ -66,25 +93,39 @@ def main():
         cliente.connect((ip, porta))
         print(f"[SUCESSO] Conectado ao servidor em {ip}:{porta}.")
 
-        aes_key = perform_key_exchange(cliente)
+        # Configura animação de carregamento
+        event = threading.Event()
+        loading_thread = threading.Thread(target=mostrar_animacao, args=(event,))
+        loading_thread.daemon = True
+        loading_thread.start()
+
+        # Realiza handshake
+        aes_key = perform_key_exchange(cliente, event)
         cipher = Fernet(base64.urlsafe_b64encode(aes_key))
 
         handshake_msg = cipher.decrypt(cliente.recv(2048)).decode()
-        print(f"[HANDSHAKE] {handshake_msg}")
+        print(f"\r[HANDSHAKE] {handshake_msg}")
+        sys.stdout.write('> ')
+        sys.stdout.flush()
 
         thread = threading.Thread(target=receber_mensagens, args=(cliente, cipher))
         thread.daemon = True
         thread.start()
 
         while True:
+            sys.stdout.write('> ')
+            sys.stdout.flush()
             msg = input()
             if msg.lower() == 'sair':
                 print("[INFO] Encerrando conexão com o servidor.")
                 break
+                
             encrypted_msg = cipher.encrypt(msg.encode())
             cliente.send(encrypted_msg)
+
     except Exception as e:
-        print(f"[FALHA] Não foi possível estabelecer conexão segura. Erro: {e}")
+        event.set()  # Garante que a animação pare em caso de erro
+        print(f"\r[FALHA] Não foi possível estabelecer conexão segura. Erro: {e}")
     finally:
         cliente.close()
 
