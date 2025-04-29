@@ -1,0 +1,14 @@
+.venv/
+env/
+venv/
+build/
+dist/
+*.spec
+*.log
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.bak
+*.tmp
